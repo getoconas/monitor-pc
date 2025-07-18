@@ -4,34 +4,14 @@ import psutil
 import socket
 import time
 
-# Para manejar volumen en Windows
-from ctypes import POINTER, cast
-from comtypes import CLSCTX_ALL
-from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume
-
 app = Flask(__name__, static_folder='build', static_url_path='')
 CORS(app)
-
-def get_volume():
-  try:
-    devices = AudioUtilities.GetSpeakers()
-    interface = devices.Activate(IAudioEndpointVolume._iid_, CLSCTX_ALL, None)
-    volume = cast(interface, POINTER(IAudioEndpointVolume))
-    current_volume = volume.GetMasterVolumeLevelScalar()  # Escalar entre 0.0 y 1.0
-    muted = volume.GetMute()
-    return {
-      'volume_percent': int(current_volume * 100),
-      'muted': bool(muted)
-    }
-  except Exception as e:
-      return {'error': str(e)}
 
 @app.route('/status')
 def status():
   try:
     cpu = psutil.cpu_percent(interval=1)
     memory = psutil.virtual_memory()
-    disk = psutil.disk_usage('/')
     net_io = psutil.net_io_counters()
     ip = socket.gethostbyname(socket.gethostname())
 
@@ -42,22 +22,23 @@ def status():
         'freq_mhz': psutil.cpu_freq().current
       },
       'memory': {
+        'current_mb': memory.used // (1024 * 1024),
         'total_mb': memory.total // (1024 * 1024),
         'used_percent': memory.percent
       },
-      'disk': {
-        'used_percent': disk.percent,
-        'total_gb': disk.total // (1024 ** 3),
-        'free_gb': disk.free // (1024 ** 3)
-      },
       'network': {
         'ip_address': ip,
-        'bytes_sent': net_io.bytes_sent,
-        'bytes_recv': net_io.bytes_recv
+        'bytes_sent_mb': net_io.bytes_sent // (1024 * 1024),
+        'bytes_recv_mb': net_io.bytes_recv // (1024 * 1024)
       },
       'system': {
-        'boot_time': time.ctime(psutil.boot_time())
-      }
+        'boot_time': time.ctime(psutil.boot_time()),
+        'uptime': "{:02}:{:02}:{:02}".format(
+          int((time.time() - psutil.boot_time()) // 3600),
+          int(((time.time() - psutil.boot_time()) % 3600) // 60),
+          int((time.time() - psutil.boot_time()) % 60)
+        )
+      },
     })
   except Exception as e:
     return jsonify({'error': str(e)}), 500
